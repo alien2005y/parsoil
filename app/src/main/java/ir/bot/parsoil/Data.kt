@@ -45,6 +45,9 @@ class Store(ctx: Context) {
     var refreshSec: Float
         get() = sp.getFloat("refresh", 3f)
         set(v) = sp.edit().putFloat("refresh", v).apply()
+    var startAt: String
+        get() = sp.getString("startAt", "08:00:00")!!
+        set(v) = sp.edit().putString("startAt", v).apply()
     var repo: String
         get() = sp.getString("repo", "YOUR_USER/parsoil-bot")!!
         set(v) = sp.edit().putString("repo", v).apply()

@@ -67,6 +67,17 @@ object Js {
       put(fs[0],d.frontData,'front.jpg');put(fs[1],d.backData,'back.jpg');
       return 'ok'}"""
 
+    // دکمه «نوبت گیری» فعال و قابل مشاهده را پیدا و کلیک می‌کند
+    const val CLICK_BOOK = """(function(){
+      var n=function(s){return (s||'').replace(/[\s\u200c\u200f]/g,'').replace(/ي/g,'ی').replace(/ك/g,'ک')};
+      var els=document.querySelectorAll('a,button,input[type=button],input[type=submit],[role=button],.btn');
+      for(var i=0;i<els.length;i++){var e=els[i];
+        if(n(e.innerText||e.value||e.textContent).indexOf('نوبتگیری')<0)continue;
+        if(e.disabled||e.getAttribute('aria-disabled')==='true'||/disabled/i.test(e.className))continue;
+        if(e.offsetParent===null||getComputedStyle(e).pointerEvents==='none')continue;
+        e.click();return true}
+      return false})()"""
+
     // لیست idها و برچسب‌ها برای عیب‌یابی اگر چیزی پر نشد
     const val INSPECT = """(function(){var o=[];
       document.querySelectorAll('input,select,textarea').forEach(function(e){

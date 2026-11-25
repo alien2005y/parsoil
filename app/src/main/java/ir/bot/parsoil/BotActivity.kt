@@ -14,6 +14,7 @@ import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
 import org.json.JSONObject
+import java.util.Calendar
 import java.io.File
 
 class BotActivity : Activity() {
@@ -27,6 +28,7 @@ class BotActivity : Activity() {
     private var opened = false
     private var attempts = 0
     private var chooserCount = 0
+    private var lastReload = 0L
     private var cb: ValueCallback<Array<Uri>>? = null
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -41,9 +43,9 @@ class BotActivity : Activity() {
             settings.javaScriptEnabled = true; settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
             webViewClient = object : WebViewClient() {
-                override fun onPageFinished(v: WebView, u: String) { if (!opened) probe() }
+                override fun onPageFinished(v: WebView, u: String) { lastReload = System.currentTimeMillis(); if (!opened) probe() }
                 override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-                    if (r.isForMainFrame) h.postDelayed({ scheduleReload() }, 100)
+                    if (r.isForMainFrame) setStatus("خطای شبکه")
                 }
                 override fun onReceivedHttpError(v: WebView, r: WebResourceRequest, e: WebResourceResponse) {
                     if (r.isForMainFrame) { setStatus("HTTP ${e.statusCode}") }
@@ -63,20 +65,34 @@ class BotActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
         bar.addView(b("نفر بعد") { nextPerson() })
         bar.addView(b("پر کن") { fill() })
-        bar.addView(b("رفرش ⏯") { refreshing = !refreshing; opened = false; if (refreshing) scheduleReload() else setStatus("رفرش متوقف") })
+        bar.addView(b("رفرش ⏯") { refreshing = !refreshing; opened = false; if (refreshing) h.post(ticker) else setStatus("رفرش متوقف") })
         bar.addView(b("بازرسی") { inspect() })
         root.addView(status); root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); root.addView(bar)
         setContentView(root)
         if (profiles.isEmpty()) Toast.makeText(this, "هیچ نفری فعال نیست", Toast.LENGTH_LONG).show()
         web.loadUrl(store.url)
+        h.post(ticker)
     }
 
     private fun setStatus(s: String) { status.text = "نفر ${cur + 1}/${profiles.size} (${profiles.getOrNull(cur)?.title() ?: "-"}) | تلاش $attempts | $s" }
 
-    private fun scheduleReload() {
-        if (!refreshing || opened) return
-        h.removeCallbacksAndMessages(null)
-        h.postDelayed({ if (refreshing && !opened) { attempts++; setStatus("رفرش..."); web.reload() } }, (store.refreshSec * 1000).toLong())
+    private fun startMillis(): Long {
+        val t = store.startAt.split(":").mapNotNull { it.trim().toIntOrNull() }
+        if (t.size < 2) return 0
+        return Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, t[0]); set(Calendar.MINUTE, t[1])
+            set(Calendar.SECOND, t.getOrElse(2) { 0 }); set(Calendar.MILLISECOND, 0) }.timeInMillis
+    }
+
+    // قبل از ساعت شروع منتظر می‌ماند؛ بعد هر ۰.۱۵ ثانیه دکمه نوبت‌گیری را چک و کلیک می‌کند
+    private val ticker = object : Runnable {
+        override fun run() {
+            if (!refreshing || opened) return
+            val now = System.currentTimeMillis(); val t = startMillis()
+            if (t > 0 && now < t - 5000) { setStatus("شروع تا ${(t - now) / 1000} ثانیه دیگر"); h.postDelayed(this, 250); return }
+            web.evaluateJavascript(Js.CLICK_BOOK) { if (it == "true") setStatus("روی نوبت‌گیری کلیک شد...") }
+            if (now - lastReload > store.refreshSec * 1000) { lastReload = now; attempts++; web.reload() }
+            h.postDelayed(this, 150)
+        }
     }
 
     // آیا فرم باز شده؟ فیلد «کد ملی» دیده می‌شود؟
@@ -84,7 +100,7 @@ class BotActivity : Activity() {
         web.evaluateJavascript(Js.IS_OPEN) { r ->
             if (r == "true") onOpen()
             else if (tries < 4) h.postDelayed({ if (!opened) probe(tries + 1) }, 250)
-            else { setStatus("فرم هنوز بسته است"); scheduleReload() }
+            else setStatus("منتظر فعال شدن نوبت‌گیری")
         }
     }
 
@@ -107,7 +123,7 @@ class BotActivity : Activity() {
     private fun nextPerson() {
         if (cur + 1 >= profiles.size) { Toast.makeText(this, "نفر دیگری نیست", Toast.LENGTH_SHORT).show(); return }
         cur++; opened = false; attempts = 0; refreshing = true
-        web.loadUrl(store.url)
+        h.removeCallbacksAndMessages(null); web.loadUrl(store.url); h.post(ticker)
     }
 
     private fun inspect() = web.evaluateJavascript(Js.INSPECT) { r ->

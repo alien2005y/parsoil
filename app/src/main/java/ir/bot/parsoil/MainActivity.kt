@@ -62,15 +62,17 @@ class MainActivity : Activity() {
 
     private fun settings() {
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 16, 32, 0) }
-        val url = EditText(this).apply { setText(store.url); hint = "آدرس صفحه" }
+        val url = EditText(this).apply { setText(store.url); hint = "آدرس صفحه‌ای که دکمه نوبت‌گیری دارد" }
         val sec = EditText(this).apply { setText(store.refreshSec.toString()); hint = "فاصله رفرش (ثانیه، مثلا 1.5)"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }
         val repo = EditText(this).apply { setText(store.repo); hint = "github user/repo" }
-        listOf(url, sec, repo).forEach { v.addView(it) }
+        val st = EditText(this).apply { setText(store.startAt); hint = "ساعت شروع HH:mm:ss (خالی = همین الان)" }
+        listOf(url, st, sec, repo).forEach { v.addView(it) }
         AlertDialog.Builder(this).setTitle("تنظیمات").setView(v).setPositiveButton("ذخیره") { _, _ ->
             store.url = url.text.toString().trim()
             store.refreshSec = (sec.text.toString().toFloatOrNull() ?: 3f).coerceAtLeast(0.5f)
             store.repo = repo.text.toString().trim()
+            store.startAt = st.text.toString().trim()
         }.show()
     }
 
