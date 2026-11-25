@@ -49,6 +49,8 @@ class BotActivity : Activity() {
     private var loadStart = 0L; private var loads = 0; private var loadMsSum = 0L
     private var errors = 0; private var timeouts = 0; private var clicks = 0; private var fills = 0
     private var lastPath = ""
+    private var navPendingUntil = 0L
+    private var clickInFlight = false
     private var armedAt = 0L; private var clickedAt = 0L; private var lastCandLog = 0L
 
     private fun log(s: String, level: String = "INFO") = Logger.w(level, s)
@@ -113,6 +115,7 @@ class BotActivity : Activity() {
                 }
                 override fun onPageFinished(v: WebView, u: String) {
                     val dur = if (loadStart > 0) System.currentTimeMillis() - loadStart else 0
+                    navPendingUntil = 0
                     loads++; loadMsSum += dur
                     log("لود شد ${dur}ms مسیر=${Uri.parse(u).path} عنوان='${v.title?.take(30) ?: ""}'", if (dur > 3000) "WARN" else "INFO")
                     if (!opened) probe()
@@ -214,15 +217,22 @@ class BotActivity : Activity() {
                 lastCandLog = now
                 web.evaluateJavascript(Js.CANDIDATES) { r -> log("دکمه فعالی نیست. دکمه‌های صفحه: ${r?.take(300)}", "INFO") }
             }
-            if (now - lastClick > 1200) {
+            // بعد از کلیک تا ۸ ثانیه صبر کن تا ناوبری کامل شود (کلیک/رفرش دوباره، ناوبری را کنسل می‌کرد)
+            if (now >= navPendingUntil && !clickInFlight && now - lastClick > 1200) {
+                clickInFlight = true
                 web.evaluateJavascript(Js.CLICK_BOOK) { r ->
+                    clickInFlight = false
                     val txt = r?.trim('"') ?: ""
-                    if (txt.isNotEmpty() && txt != "null") { lastClick = System.currentTimeMillis(); clickedAt = lastClick; clicks++; state(Ui.ok, "کلیک شد: $txt") }
+                    if (txt.isNotEmpty() && txt != "null") {
+                        lastClick = System.currentTimeMillis(); clickedAt = lastClick; clicks++
+                        navPendingUntil = lastClick + 8000
+                        state(Ui.ok, "کلیک شد: $txt")
+                    }
                 }
             }
             val loading = web.progress < 100
             val limit = if (loading) 6000L else (store.refreshSec * 1000).toLong()
-            if (now - lastReload > limit) {
+            if (now >= navPendingUntil && now - lastReload > limit) {
                 if (loading) { web.stopLoading(); timeouts++; log("تایم‌اوت لود (۶ ثانیه) مسیر=${Uri.parse(web.url ?: "").path}", "WARN") }
                 lastReload = now; attempts++
                 web.reload()

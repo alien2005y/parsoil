@@ -40,8 +40,8 @@ class Store(ctx: Context) {
         }
         set(v) { sp.edit().putString("profiles", JSONArray(v.map { it.toJson() }).toString()).apply() }
     var url: String
-        get() = sp.getString("url2", "https://roghan1.parsoilco.ir/")!!
-        set(v) = sp.edit().putString("url2", v).apply()
+        get() = sp.getString("url3", "https://roghan1.parsoilco.ir/DirectSaleAppointment")!!
+        set(v) = sp.edit().putString("url3", v).apply()
     var refreshSec: Float
         get() = sp.getFloat("refresh1s", 1f)
         set(v) = sp.edit().putFloat("refresh1s", v).apply()

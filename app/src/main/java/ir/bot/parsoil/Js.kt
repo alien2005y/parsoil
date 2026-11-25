@@ -18,20 +18,25 @@ object Js {
     // فرم باز است اگر فیلد «کد ملی» قابل مشاهده باشد
     const val IS_OPEN = "(function(){$HELPERS var e=byLabel('کد ملی');return !!(e&&vis(e));})()"
 
-    // دکمه فعالِ دریافت/ثبت نوبت را پیدا و کلیک می‌کند؛ متن دکمه را برمی‌گرداند ('' = چیزی نبود)
+    // دکمه/کارت فعالِ نوبت را پیدا و کلیک می‌کند؛ متن را برمی‌گرداند ('' = چیزی نبود)
+    // الف) متن دکمه کلیدواژه دارد  ب) خودِ کارت تاریخ‌دار فعال شده  ج) دکمه فعال داخل یک کارت تاریخ‌دار
     const val CLICK_BOOK = """(function(){
-      var n=function(s){return (s||'').replace(/[\s‌‏]/g,'').replace(/ي/g,'ی').replace(/ك/g,'ک')};
+      var n=function(s){return (s||'').replace(/[\s\u200c\u200f]/g,'').replace(/ي/g,'ی').replace(/ك/g,'ک')};
       var keys=['نوبتگیری','دریافتنوبت','ثبتنوبت','رزرونوبت','دریافت','رزرو','ثبتنام'];
+      var isDate=/[۰-۹0-9]{4}\/[۰-۹0-9]{2}\/[۰-۹0-9]{2}/;
+      var bad=['تکمیل','بازگشت','خروج','پیگیری','منو'];
       var els=document.querySelectorAll('a,button,input[type=button],input[type=submit],[role=button]');
+      var off=function(e){return e.disabled||e.getAttribute('aria-disabled')==='true'||/disabled/i.test(e.className)||e.offsetParent===null||getComputedStyle(e).pointerEvents==='none'};
+      var inCard=function(e){var p=e.parentElement;for(var k=0;k<4&&p;k++,p=p.parentElement){if(isDate.test(p.innerText||''))return true}return false};
       for(var i=0;i<els.length;i++){var e=els[i];
         var raw=(e.innerText||e.value||e.textContent||'').trim(), t=n(raw);
-        if(!t||t.indexOf('تکمیل')>=0||t.indexOf('بازگشت')>=0||t.indexOf('خروج')>=0)continue;
-        if(e.closest('nav,header,.navbar,footer'))continue;
+        if(!t||e.closest('nav,header,.navbar,footer'))continue;
+        var skip=false;for(var b=0;b<bad.length;b++){if(t.indexOf(bad[b])>=0){skip=true;break}}
+        if(skip||off(e))continue;
         var hit=false;for(var k=0;k<keys.length;k++){if(t.indexOf(keys[k])>=0){hit=true;break}}
+        if(!hit)hit=isDate.test(raw)||inCard(e);
         if(!hit)continue;
-        if(e.disabled||e.getAttribute('aria-disabled')==='true'||/disabled/i.test(e.className))continue;
-        if(e.offsetParent===null||getComputedStyle(e).pointerEvents==='none')continue;
-        e.click();return raw.slice(0,40)}
+        e.click();return raw.replace(/\s+/g,' ').slice(0,40)}
       return ''})()"""
 
     // برای لاگ: دکمه‌ها/لینک‌های داخل صفحه (متن | غیرفعال؟)
