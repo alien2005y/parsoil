@@ -43,8 +43,8 @@ class Store(ctx: Context) {
         get() = sp.getString("url", "https://roghan1.parsoilco.ir/DirectSaleAppointment")!!
         set(v) = sp.edit().putString("url", v).apply()
     var refreshSec: Float
-        get() = sp.getFloat("refresh", 3f)
-        set(v) = sp.edit().putFloat("refresh", v).apply()
+        get() = sp.getFloat("refresh1s", 1f)
+        set(v) = sp.edit().putFloat("refresh1s", v).apply()
     var startAt: String
         get() = sp.getString("startAt", "08:00:00")!!
         set(v) = sp.edit().putString("startAt", v).apply()

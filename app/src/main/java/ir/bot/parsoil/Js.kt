@@ -65,22 +65,31 @@ object Js {
         var f=new File([u],name,{type:'image/jpeg'}),dt=new DataTransfer();dt.items.add(f);
         inp.files=dt.files;ev(inp,'change')};
       put(fs[0],d.frontData,'front.jpg');put(fs[1],d.backData,'back.jpg');
+      if(d.focusCap){var cap=byLabel('کد امنیتی');if(cap){cap.scrollIntoView({block:'center'});cap.focus()}}
       return 'ok'}"""
 
-    // دکمه «نوبت گیری» فعال و قابل مشاهده را پیدا و کلیک می‌کند
+    // دکمه فعالِ دریافت/ثبت نوبت را پیدا و کلیک می‌کند؛ متن دکمه را برمی‌گرداند ('' = چیزی نبود)
     const val CLICK_BOOK = """(function(){
       var n=function(s){return (s||'').replace(/[\s\u200c\u200f]/g,'').replace(/ي/g,'ی').replace(/ك/g,'ک')};
-      var els=document.querySelectorAll('a,button,input[type=button],input[type=submit],[role=button],.btn');
+      var keys=['نوبتگیری','دریافتنوبت','ثبتنوبت','رزرونوبت','دریافت','رزرو','ثبتنام'];
+      var els=document.querySelectorAll('a,button,input[type=button],input[type=submit],[role=button]');
       for(var i=0;i<els.length;i++){var e=els[i];
-        if(n(e.innerText||e.value||e.textContent).indexOf('نوبتگیری')<0)continue;
+        var raw=(e.innerText||e.value||e.textContent||'').trim(), t=n(raw);
+        if(!t||t.indexOf('تکمیل')>=0||t.indexOf('بازگشت')>=0||t.indexOf('خروج')>=0)continue;
+        if(e.closest('nav,header,.navbar,footer'))continue;
+        var hit=false;for(var k=0;k<keys.length;k++){if(t.indexOf(keys[k])>=0){hit=true;break}}
+        if(!hit)continue;
         if(e.disabled||e.getAttribute('aria-disabled')==='true'||/disabled/i.test(e.className))continue;
         if(e.offsetParent===null||getComputedStyle(e).pointerEvents==='none')continue;
-        e.click();return true}
-      return false})()"""
+        e.click();return raw.slice(0,40)}
+      return ''})()"""
 
     // لیست idها و برچسب‌ها برای عیب‌یابی اگر چیزی پر نشد
     const val INSPECT = """(function(){var o=[];
       document.querySelectorAll('input,select,textarea').forEach(function(e){
         o.push(e.tagName+' type='+e.type+' id='+e.id+' name='+e.name+' ph='+(e.placeholder||'')+' vis='+(e.offsetParent!==null))});
+      document.querySelectorAll('a,button,input[type=button],input[type=submit]').forEach(function(e){
+        o.push('CLICK '+e.tagName+' txt='+(e.innerText||e.value||'').trim().slice(0,30)+' cls='+e.className+' dis='+(e.disabled||/disabled/i.test(e.className))+' href='+(e.getAttribute('href')||''))});
+      o.unshift('TITLE='+document.title+' URL='+location.href);
       return o.join('\n')})()"""
 }

@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -17,40 +18,71 @@ class MainActivity : Activity() {
     private lateinit var list: LinearLayout
     private var pickCb: ((String) -> Unit)? = null
 
+    private fun dp(v: Int) = Ui.dp(this, v)
+    private lateinit var summary: TextView
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         store = Store(this)
-        val root = ScrollView(this).apply { layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 48, 32, 48) }
-        root.addView(col)
-        col.addView(TextView(this).apply { text = "ربات ثبت نام پارس‌اویل — v${BuildConfig.VERSION_NAME}"; textSize = 20f })
-        col.addView(btn("▶ شروع") { startActivity(Intent(this, BotActivity::class.java)) })
-        col.addView(btn("＋ افزودن نفر") { edit(Profile(), -1) })
-        col.addView(btn("⚙ تنظیمات (آدرس، فاصله رفرش، ریپو)") { settings() })
-        col.addView(btn("⟳ به‌روزرسانی برنامه") { Updater.check(this, store.repo) })
-        col.addView(TextView(this).apply { text = "\nافراد به ترتیب اولویت (بالاترین اول):"; textSize = 16f })
+        window.statusBarColor = Ui.navy
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL; setBackgroundColor(Ui.bg) }
+        val header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Ui.navy); setPadding(dp(20), dp(34), dp(20), dp(18)) }
+        header.addView(Ui.text(this, "ربات نوبت‌گیری پارس‌اویل", 20f, Color.WHITE, true))
+        header.addView(Ui.text(this, "نسخه ${BuildConfig.VERSION_NAME}", 12f, Color.parseColor("#B8C4E0")))
+        val scroll = ScrollView(this)
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(24)) }
+        scroll.addView(col)
+
+        val start = Ui.card(this)
+        summary = Ui.text(this, "", 13f, Ui.muted)
+        start.addView(summary)
+        start.addView(Ui.button(this, "▶   شروع نوبت‌گیری", Ui.ok, 18f) {
+            if (store.profiles.none { it.enabled }) Toast.makeText(this, "اول یک نفر اضافه و فعال کن", Toast.LENGTH_SHORT).show()
+            else startActivity(Intent(this, BotActivity::class.java))
+        }.also { it.layoutParams = LinearLayout.LayoutParams(-1, dp(58)).apply { topMargin = dp(8) } })
+        col.addView(start)
+
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(Ui.weight(Ui.button(this, "＋ نفر جدید", Ui.navy, 13f) { edit(Profile(), -1) }))
+        row.addView(Ui.weight(Ui.button(this, "⚙ تنظیمات", Ui.navy, 13f) { settings() }))
+        row.addView(Ui.weight(Ui.button(this, "⟳ آپدیت", Ui.gold, 13f) { Updater.check(this, store.repo) }))
+        col.addView(row)
+
+        col.addView(Ui.text(this, "افراد به ترتیب اولویت", 15f, Ui.navy, true).apply { setPadding(dp(4), dp(18), 0, dp(4)) })
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(list)
+        root.addView(header); root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
 
     override fun onResume() { super.onResume(); render() }
 
-    private fun btn(t: String, f: () -> Unit) = Button(this).apply { text = t; setOnClickListener { f() } }
-
     private fun render() {
-        list.removeAllViews()
         val ps = store.profiles
+        summary.text = "ساعت شروع: ${store.startAt.ifEmpty { "همین الان" }}   •   رفرش هر ${store.refreshSec} ثانیه   •   ${ps.count { it.enabled }} نفر فعال"
+        list.removeAllViews()
+        if (ps.isEmpty()) list.addView(Ui.text(this, "هنوز کسی اضافه نشده.\nبا «＋ نفر جدید» مشخصات و عکس کارت ماشین را وارد کن.", 13f, Ui.muted).apply { setPadding(dp(4), dp(8), dp(4), 0) })
         ps.forEachIndexed { i, p ->
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val c = Ui.card(this)
+            val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             val cb = CheckBox(this).apply { isChecked = p.enabled
-                setOnCheckedChangeListener { _, v -> val l = store.profiles; l[i].enabled = v; store.profiles = l } }
-            val tv = TextView(this).apply { text = "${i + 1}. ${p.title()}"; textSize = 16f
-                layoutParams = LinearLayout.LayoutParams(0, -2, 1f); setOnClickListener { edit(p, i) } }
-            row.addView(cb); row.addView(tv)
-            row.addView(btn("▲") { move(i, -1) }); row.addView(btn("▼") { move(i, 1) })
-            row.addView(btn("🗑") { val l = store.profiles; l.removeAt(i); store.profiles = l; render() })
-            list.addView(row)
+                setOnCheckedChangeListener { _, v -> val l = store.profiles; l[i].enabled = v; store.profiles = l; render() } }
+            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                setOnClickListener { edit(p, i) } }
+            info.addView(Ui.text(this, "${i + 1}. ${p.title()}", 16f, if (p.enabled) Ui.navy else Ui.muted, true))
+            val photos = if (p.front.isNotEmpty() && p.back.isNotEmpty()) "عکس‌ها ✓" else "⚠ عکس ناقص"
+            info.addView(Ui.text(this, "کد ملی ${p.nationalId.ifEmpty { "-" }}  •  $photos", 12f, Ui.muted))
+            top.addView(cb); top.addView(info)
+            c.addView(top)
+            val acts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, 0) }
+            acts.addView(Ui.weight(Ui.button(this, "▲", Ui.muted, 13f) { move(i, -1) }))
+            acts.addView(Ui.weight(Ui.button(this, "▼", Ui.muted, 13f) { move(i, 1) }))
+            acts.addView(Ui.weight(Ui.button(this, "ویرایش", Ui.navy, 13f) { edit(p, i) }, 1.5f))
+            acts.addView(Ui.weight(Ui.button(this, "حذف", Ui.bad, 13f) {
+                AlertDialog.Builder(this).setMessage("${p.title()} حذف شود؟").setPositiveButton("حذف") { _, _ ->
+                    val l = store.profiles; l.removeAt(i); store.profiles = l; render() }.setNegativeButton("نه", null).show() }))
+            c.addView(acts)
+            list.addView(c)
         }
     }
 
