@@ -44,14 +44,21 @@ class BotActivity : Activity() {
     private var armed = false
     private var stateColor = Ui.warn
     private var stateMsg = "آماده"
-    private val logLines = ArrayDeque<String>()
     private val fmt = SimpleDateFormat("HH:mm:ss", Locale.US)
+    // آمار برای پایش
+    private var loadStart = 0L; private var loads = 0; private var loadMsSum = 0L
+    private var errors = 0; private var timeouts = 0; private var clicks = 0; private var fills = 0
+    private var armedAt = 0L; private var clickedAt = 0L; private var lastCandLog = 0L
 
-    private fun log(s: String) {
-        logLines.addFirst("${fmt.format(Date())}  $s")
-        while (logLines.size > 80) logLines.removeLast()
+    private fun log(s: String, level: String = "INFO") = Logger.w(level, s)
+    private fun state(color: Int, msg: String) {
+        stateColor = color; stateMsg = msg
+        log(msg, if (color == Ui.bad) "ERROR" else "INFO")
     }
-    private fun state(color: Int, msg: String) { stateColor = color; stateMsg = msg; log(msg) }
+    private val summaryTick = object : Runnable {
+        override fun run() { logSummary(); h.postDelayed(this, 30000) }
+    }
+    private fun logSummary() = log("آمار: رفرش=$attempts لود=$loads میانگین=${if (loads > 0) loadMsSum / loads else 0}ms خطا=$errors تایم‌اوت=$timeouts کلیک=$clicks پرکردن=$fills")
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
@@ -59,6 +66,7 @@ class BotActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor = Ui.navy
         store = Store(this)
+        Logger.init(this); Logger.sessionHeader(this, store)
         profiles = store.profiles.filter { it.enabled }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL; setBackgroundColor(Ui.bg) }
@@ -91,26 +99,35 @@ class BotActivity : Activity() {
             wv.webViewClient = object : WebViewClient() {
                 override fun onReceivedSslError(v: WebView, hd: SslErrorHandler, e: SslError) {
                     // سایت گواهی نامعتبر دارد (در کروم هم قرمز است)؛ فقط برای پارس‌اویل ادامه بده
-                    if (Uri.parse(e.url).host?.endsWith("parsoilco.ir") == true) { log("SSL نامعتبر (ادامه)"); hd.proceed() } else hd.cancel()
+                    if (Uri.parse(e.url).host?.endsWith("parsoilco.ir") == true) { log("SSL نامعتبر ${e.primaryError} (ادامه)", "WARN"); hd.proceed() } else hd.cancel()
                 }
+                override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) { loadStart = System.currentTimeMillis() }
                 override fun onPageFinished(v: WebView, u: String) {
-                    log("لود شد: ${v.title?.take(30) ?: u.take(40)}")
+                    val dur = if (loadStart > 0) System.currentTimeMillis() - loadStart else 0
+                    loads++; loadMsSum += dur
+                    log("لود شد ${dur}ms مسیر=${Uri.parse(u).path} عنوان='${v.title?.take(30) ?: ""}'", if (dur > 3000) "WARN" else "INFO")
                     if (!opened) probe()
                 }
                 override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
                     if (r.isForMainFrame) {
-                        state(Ui.bad, "خطا ${e.errorCode}: ${e.description}")
+                        errors++
+                        state(Ui.bad, "خطای لود ${e.errorCode}: ${e.description}")
                         lastReload = System.currentTimeMillis() - (store.refreshSec * 1000).toLong() + 500
                     }
                 }
                 override fun onReceivedHttpError(v: WebView, r: WebResourceRequest, e: WebResourceResponse) {
                     if (r.isForMainFrame) {
-                        state(Ui.bad, "پاسخ سرور ${e.statusCode}")
+                        errors++
+                        state(Ui.bad, "پاسخ سرور ${e.statusCode} مسیر=${r.url.path}")
                         lastReload = System.currentTimeMillis() - (store.refreshSec * 1000).toLong() + 500
                     }
                 }
             }
             wv.webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                    if (m.messageLevel() == ConsoleMessage.MessageLevel.ERROR) log("خطای JS صفحه: ${m.message().take(160)} (خط ${m.lineNumber()})", "WARN")
+                    return true
+                }
                 // جایگزین: اگر خود سایت دیالوگ انتخاب فایل باز کرد، به نوبت عکس روی/پشت را بده
                 override fun onShowFileChooser(w: WebView, c: ValueCallback<Array<Uri>>, p: FileChooserParams): Boolean {
                     val pr = profiles.getOrNull(cur); val path = if (chooserCount++ % 2 == 0) pr?.front else pr?.back
@@ -137,6 +154,7 @@ class BotActivity : Activity() {
         startLoad()
         h.post(uiTick)
         h.post(ticker)
+        h.postDelayed(summaryTick, 30000)
     }
 
     private fun startLoad() {
@@ -176,17 +194,27 @@ class BotActivity : Activity() {
             if (!refreshing || opened) return
             val now = System.currentTimeMillis(); val t = startMillis()
             if (t > 0 && now < t - 5000) { stateColor = Ui.warn; stateMsg = "منتظر ساعت شروع"; h.postDelayed(this, 250); return }
-            if (!armed) { armed = true; lastReload = 0; state(Ui.warn, "شروع رفرش و پایش دکمه") }
+            if (!armed) { armed = true; armedAt = now; lastReload = 0; state(Ui.warn, "شروع رفرش و پایش دکمه") }
+            // کلیک شد ولی فرم باز نشد؟
+            if (clickedAt > 0 && now - clickedAt > 6000) {
+                log("کلیک شد ولی بعد از ۶ ثانیه فرم باز نشد", "WARN"); clickedAt = 0
+                web.evaluateJavascript(Js.CANDIDATES) { r -> log("وضعیت صفحه: ${r?.take(300)}", "WARN") }
+            }
+            // دکمه فعالی پیدا نمی‌شود؟ هر ۱۰ ثانیه یک بار علت را لاگ کن
+            if (now - lastCandLog > 10000) {
+                lastCandLog = now
+                web.evaluateJavascript(Js.CANDIDATES) { r -> log("دکمه فعالی نیست. دکمه‌های صفحه: ${r?.take(300)}", "INFO") }
+            }
             if (now - lastClick > 1200) {
                 web.evaluateJavascript(Js.CLICK_BOOK) { r ->
                     val txt = r?.trim('"') ?: ""
-                    if (txt.isNotEmpty() && txt != "null") { lastClick = System.currentTimeMillis(); state(Ui.ok, "کلیک شد: $txt") }
+                    if (txt.isNotEmpty() && txt != "null") { lastClick = System.currentTimeMillis(); clickedAt = lastClick; clicks++; state(Ui.ok, "کلیک شد: $txt") }
                 }
             }
             val loading = web.progress < 100
             val limit = if (loading) 8000L else (store.refreshSec * 1000).toLong()
             if (now - lastReload > limit) {
-                if (loading) { web.stopLoading(); log("تایم‌اوت ۸ ثانیه") }
+                if (loading) { web.stopLoading(); timeouts++; log("تایم‌اوت لود (۸ ثانیه) مسیر=${Uri.parse(web.url ?: "").path}", "WARN") }
                 lastReload = now; attempts++
                 web.reload()
             }
@@ -206,6 +234,7 @@ class BotActivity : Activity() {
     private fun onOpen() {
         if (opened) return
         opened = true
+        log("فرم باز شد ${if (armedAt > 0) (System.currentTimeMillis() - armedAt) / 1000 else 0}s بعد از شروع پایش، رفرش=$attempts")
         state(Ui.ok, "فرم باز شد! پر می‌شود...")
         try { ToneGenerator(AudioManager.STREAM_ALARM, 100).startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 1500) } catch (_: Exception) {}
         val vib = getSystemService(VIBRATOR_SERVICE) as Vibrator
@@ -218,9 +247,19 @@ class BotActivity : Activity() {
         val p = profiles.getOrNull(cur) ?: run { state(Ui.bad, "نفری برای پر کردن نیست"); return }
         fun b64(path: String) = if (path.isEmpty() || !File(path).exists()) "" else "data:image/jpeg;base64," + Base64.encodeToString(File(path).readBytes(), Base64.NO_WRAP)
         val data = JSONObject(p.toJson().toString()).put("frontData", b64(p.front)).put("backData", b64(p.back)).put("focusCap", focusCap)
-        web.evaluateJavascript("(" + Js.FILL + ")(" + data + ")", null)
+        fills++
+        web.evaluateJavascript("(" + Js.FILL + ")(" + data + ")") { r ->
+            try {
+                val rep = JSONObject(JSONObject("{\"v\":$r}").getString("v"))
+                val bad = rep.keys().asSequence().filter { k -> val v = rep.getString(k); v != "ok" && v != "focused" && v != "empty-profile" && !k.startsWith("plateInputs") && k != "fileInputs" }
+                    .map { k -> "$k=${rep.getString(k)}" }.toList()
+                log("پرکردن(${if (focusCap) "۲" else "۱"}): ${if (bad.isEmpty()) "همه فیلدها ok" else "مشکل در " + bad.joinToString(", ")} | $rep",
+                    if (bad.isEmpty()) "INFO" else "WARN")
+                if (bad.isNotEmpty() && focusCap) { stateColor = Ui.warn; stateMsg = "بعضی فیلدها پر نشد: " + bad.take(3).joinToString("،") }
+            } catch (e: Exception) { log("گزارش پرکردن خوانده نشد: ${e.message} raw=${r?.take(200)}", "ERROR") }
+        }
         if (focusCap) {
-            state(Ui.ok, "پر شد ✓ فقط محصول + کد امنیتی + ثبت")
+            if (stateColor != Ui.warn) state(Ui.ok, "پر شد ✓ فقط محصول + کد امنیتی + ثبت")
             web.requestFocus()
             h.postDelayed({ (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(web, 0) }, 300)
         }
@@ -241,12 +280,13 @@ class BotActivity : Activity() {
             }.show()
     }
 
-    private fun showLog() = dialogText("لاگ", logLines.joinToString("\n").ifEmpty { "خالی" })
+    private fun showLog() = Logger.dialog(this)
 
     private fun inspect() = web.evaluateJavascript(Js.INSPECT) { r ->
         val t = r?.let { JSONObject("{\"v\":$it}").getString("v") } ?: ""
+        log("بازرسی صفحه:\n$t")
         dialogText("فیلدها و دکمه‌های صفحه", t)
     }
 
-    override fun onDestroy() { h.removeCallbacksAndMessages(null); super.onDestroy() }
+    override fun onDestroy() { logSummary(); log("پایان جلسه"); h.removeCallbacksAndMessages(null); super.onDestroy() }
 }

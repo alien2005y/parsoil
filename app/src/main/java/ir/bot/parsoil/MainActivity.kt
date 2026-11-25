@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         store = Store(this)
+        Logger.init(this)
         window.statusBarColor = Ui.navy
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL; setBackgroundColor(Ui.bg) }
         val header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Ui.navy); setPadding(dp(20), dp(34), dp(20), dp(18)) }
@@ -47,6 +48,8 @@ class MainActivity : Activity() {
         row.addView(Ui.weight(Ui.button(this, "⚙ تنظیمات", Ui.navy, 13f) { settings() }))
         row.addView(Ui.weight(Ui.button(this, "⟳ آپدیت", Ui.gold, 13f) { Updater.check(this, store.repo) }))
         col.addView(row)
+        col.addView(Ui.button(this, "📋 گزارش و لاگ (برای بررسی با Claude)", Ui.muted, 13f) { Logger.dialog(this) }
+            .also { it.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) } })
 
         col.addView(Ui.text(this, "افراد به ترتیب اولویت", 15f, Ui.navy, true).apply { setPadding(dp(4), dp(18), 0, dp(4)) })
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

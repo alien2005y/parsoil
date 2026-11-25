@@ -1,1 +1,4 @@
-<paths><external-files-path name="dl" path="."/></paths>
+<paths>
+    <external-files-path name="ext" path="."/>
+    <files-path name="int" path="."/>
+</paths>
