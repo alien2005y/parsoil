@@ -44,8 +44,12 @@ class BotActivity : Activity() {
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(v: WebView, u: String) { lastReload = System.currentTimeMillis(); if (!opened) probe() }
+                override fun onReceivedSslError(v: WebView, hd: SslErrorHandler, e: android.net.http.SslError) {
+                    // فقط برای خود سایت پارس‌اویل خطای SSL را نادیده بگیر
+                    if (Uri.parse(e.url).host?.endsWith("parsoilco.ir") == true) hd.proceed() else hd.cancel()
+                }
                 override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
-                    if (r.isForMainFrame) setStatus("خطای شبکه")
+                    if (r.isForMainFrame) { setStatus("خطا/تایم‌اوت - تلاش مجدد"); lastReload = System.currentTimeMillis() - (store.refreshSec * 1000).toLong() + 500 }
                 }
                 override fun onReceivedHttpError(v: WebView, r: WebResourceRequest, e: WebResourceResponse) {
                     if (r.isForMainFrame) { setStatus("HTTP ${e.statusCode}") }
@@ -90,7 +94,13 @@ class BotActivity : Activity() {
             val now = System.currentTimeMillis(); val t = startMillis()
             if (t > 0 && now < t - 5000) { setStatus("شروع تا ${(t - now) / 1000} ثانیه دیگر"); h.postDelayed(this, 250); return }
             web.evaluateJavascript(Js.CLICK_BOOK) { if (it == "true") setStatus("روی نوبت‌گیری کلیک شد...") }
-            if (now - lastReload > store.refreshSec * 1000) { lastReload = now; attempts++; web.reload() }
+            // اگر صفحه هنوز در حال لود است تا ۸ ثانیه صبر کن (تایم‌اوت)، وگرنه طبق فاصله رفرش
+            val limit = if (web.progress < 100) 8000L else (store.refreshSec * 1000).toLong()
+            if (now - lastReload > limit) {
+                lastReload = now; attempts++
+                if (web.progress < 100) web.stopLoading()
+                web.reload()
+            }
             h.postDelayed(this, 150)
         }
     }
