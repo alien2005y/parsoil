@@ -40,7 +40,7 @@ object Js {
         if(e.closest('nav,header,.navbar,footer'))return;
         var t=(e.innerText||e.value||'').trim().slice(0,28);if(!t)return;
         o.push(t+'|'+((e.disabled||/disabled/i.test(e.className))?'غیرفعال':'فعال'))});
-      return 'title='+document.title+' ; '+o.slice(0,12).join(' ; ')})()"""
+      return 'title='+document.title+' ; '+o.slice(0,12).join(' ; ')+' ; متن صفحه='+((document.body&&document.body.innerText)||'').replace(/\s+/g,' ').trim().slice(0,160)})()"""
 
     // data = پروفایل؛ خروجی = JSON وضعیت هر فیلد (ok / missing / no-option / rejected ...)
     const val FILL = """function(d){

@@ -48,6 +48,7 @@ class BotActivity : Activity() {
     // آمار برای پایش
     private var loadStart = 0L; private var loads = 0; private var loadMsSum = 0L
     private var errors = 0; private var timeouts = 0; private var clicks = 0; private var fills = 0
+    private var lastPath = ""
     private var armedAt = 0L; private var clickedAt = 0L; private var lastCandLog = 0L
 
     private fun log(s: String, level: String = "INFO") = Logger.w(level, s)
@@ -101,7 +102,15 @@ class BotActivity : Activity() {
                     // سایت گواهی نامعتبر دارد (در کروم هم قرمز است)؛ فقط برای پارس‌اویل ادامه بده
                     if (Uri.parse(e.url).host?.endsWith("parsoilco.ir") == true) { log("SSL نامعتبر ${e.primaryError} (ادامه)", "WARN"); hd.proceed() } else hd.cancel()
                 }
-                override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) { loadStart = System.currentTimeMillis() }
+                override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) {
+                    loadStart = System.currentTimeMillis()
+                    val path = Uri.parse(u).path ?: ""
+                    if (path != lastPath) {
+                        val q = Uri.parse(u).queryParameterNames
+                        log("ناوبری: $lastPath ← $path${if (q.isNotEmpty()) " پارامترها=$q" else ""}")
+                        lastPath = path
+                    }
+                }
                 override fun onPageFinished(v: WebView, u: String) {
                     val dur = if (loadStart > 0) System.currentTimeMillis() - loadStart else 0
                     loads++; loadMsSum += dur
@@ -194,7 +203,7 @@ class BotActivity : Activity() {
             if (!refreshing || opened) return
             val now = System.currentTimeMillis(); val t = startMillis()
             if (t > 0 && now < t - 5000) { stateColor = Ui.warn; stateMsg = "منتظر ساعت شروع"; h.postDelayed(this, 250); return }
-            if (!armed) { armed = true; armedAt = now; lastReload = 0; state(Ui.warn, "شروع رفرش و پایش دکمه") }
+            if (!armed) { armed = true; armedAt = now; if (web.progress >= 100) lastReload = 0; state(Ui.warn, "شروع رفرش و پایش دکمه") }
             // کلیک شد ولی فرم باز نشد؟
             if (clickedAt > 0 && now - clickedAt > 6000) {
                 log("کلیک شد ولی بعد از ۶ ثانیه فرم باز نشد", "WARN"); clickedAt = 0
@@ -212,9 +221,9 @@ class BotActivity : Activity() {
                 }
             }
             val loading = web.progress < 100
-            val limit = if (loading) 8000L else (store.refreshSec * 1000).toLong()
+            val limit = if (loading) 6000L else (store.refreshSec * 1000).toLong()
             if (now - lastReload > limit) {
-                if (loading) { web.stopLoading(); timeouts++; log("تایم‌اوت لود (۸ ثانیه) مسیر=${Uri.parse(web.url ?: "").path}", "WARN") }
+                if (loading) { web.stopLoading(); timeouts++; log("تایم‌اوت لود (۶ ثانیه) مسیر=${Uri.parse(web.url ?: "").path}", "WARN") }
                 lastReload = now; attempts++
                 web.reload()
             }
