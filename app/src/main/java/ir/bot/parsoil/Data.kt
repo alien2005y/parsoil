@@ -49,6 +49,6 @@ class Store(ctx: Context) {
         get() = sp.getString("startAt", "08:00:00")!!
         set(v) = sp.edit().putString("startAt", v).apply()
     var repo: String
-        get() = sp.getString("repo", "YOUR_USER/parsoil-bot")!!
+        get() = sp.getString("repo", "alien2005y/parsoil")!!
         set(v) = sp.edit().putString("repo", v).apply()
 }
