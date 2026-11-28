@@ -172,6 +172,7 @@ class BotActivity : Activity() {
             h.postDelayed({ log("بارگذاری مجدد با شبکه ${Logger.netInfo(this)}"); startLoad() }, 1500)
         }
         bar2.addView(Ui.weight(btnUa)); bar2.addView(Ui.weight(btnNet))
+        bar2.addView(Ui.weight(Ui.button(this, "🔍 تشخیص", Ui.gold, 12f) { Diag.run(this) }))
         applyUa(); applyNet()
         root.addView(panel); root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); root.addView(bar); root.addView(bar2)
         setContentView(root)

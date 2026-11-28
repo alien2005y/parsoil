@@ -48,6 +48,8 @@ class MainActivity : Activity() {
         row.addView(Ui.weight(Ui.button(this, "⚙ تنظیمات", Ui.navy, 13f) { settings() }))
         row.addView(Ui.weight(Ui.button(this, "⟳ آپدیت", Ui.gold, 13f) { Updater.check(this, store.repo) }))
         col.addView(row)
+        col.addView(Ui.button(this, "🔍 تشخیص اتصال به سایت (DNS / IPv6 / SSL)", Ui.gold, 13f) { Diag.run(this) }
+            .also { it.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) } })
         col.addView(Ui.button(this, "📋 گزارش و لاگ (برای بررسی با Claude)", Ui.muted, 13f) { Logger.dialog(this) }
             .also { it.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) } })
 
