@@ -103,11 +103,17 @@ class MainActivity : Activity() {
         val repo = EditText(this).apply { setText(store.repo); hint = "github user/repo" }
         val st = EditText(this).apply { setText(store.startAt); hint = "ساعت شروع HH:mm:ss (خالی = همین الان)" }
         listOf(url, st, sec, repo).forEach { v.addView(it) }
+        val desk = CheckBox(this).apply { text = "حالت دسکتاپ (مثل مرورگر کامپیوتر)"; isChecked = store.desktop }
+        val netSp = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("شبکه: خودکار", "فقط Wi-Fi", "فقط داده موبایل"))
+            setSelection(store.net) }
+        v.addView(desk); v.addView(netSp)
         AlertDialog.Builder(this).setTitle("تنظیمات").setView(v).setPositiveButton("ذخیره") { _, _ ->
             store.url = url.text.toString().trim()
             store.refreshSec = (sec.text.toString().toFloatOrNull() ?: 3f).coerceAtLeast(0.5f)
             store.repo = repo.text.toString().trim()
             store.startAt = st.text.toString().trim()
+            store.desktop = desk.isChecked; store.net = netSp.selectedItemPosition
         }.show()
     }
 

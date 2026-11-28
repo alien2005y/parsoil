@@ -9,6 +9,10 @@ import android.content.Context
 import android.graphics.Color
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.net.http.SslError
 import android.os.*
@@ -94,8 +98,6 @@ class BotActivity : Activity() {
             settings.javaScriptEnabled = true; settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            // مثل کروم معرفی شو (بعضی سایت‌ها "wv" را نمی‌پسندند)
-            settings.userAgentString = settings.userAgentString.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
         }.also { wv ->
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
@@ -124,6 +126,7 @@ class BotActivity : Activity() {
                     if (r.isForMainFrame) {
                         errors++
                         state(Ui.bad, "خطای لود ${e.errorCode}: ${e.description}")
+                        log("شبکه فعال هنگام خطا: ${Logger.netInfo(this@BotActivity)} ua=${if (store.desktop) "desktop" else "mobile"}", "WARN")
                         lastReload = System.currentTimeMillis() - (store.refreshSec * 1000).toLong() + 500
                     }
                 }
@@ -158,7 +161,19 @@ class BotActivity : Activity() {
         bar.addView(Ui.weight(Ui.button(this, "بازرسی", Ui.muted, 12f) { inspect() }))
         bar.addView(Ui.weight(Ui.button(this, "لاگ", Ui.muted, 12f) { showLog() }))
 
-        root.addView(panel); root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); root.addView(bar)
+        val bar2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(Color.WHITE)
+            setPadding(Ui.dp(this@BotActivity, 6), 0, Ui.dp(this@BotActivity, 6), Ui.dp(this@BotActivity, 6)) }
+        btnUa = Ui.button(this, "", Ui.navy, 12f) {
+            store.desktop = !store.desktop; applyUa()
+            log("حالت: ${if (store.desktop) "دسکتاپ" else "موبایل"} — بارگذاری مجدد"); startLoad()
+        }
+        btnNet = Ui.button(this, "", Ui.navy, 12f) {
+            store.net = (store.net + 1) % 3; applyNet()
+            h.postDelayed({ log("بارگذاری مجدد با شبکه ${Logger.netInfo(this)}"); startLoad() }, 1500)
+        }
+        bar2.addView(Ui.weight(btnUa)); bar2.addView(Ui.weight(btnNet))
+        applyUa(); applyNet()
+        root.addView(panel); root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); root.addView(bar); root.addView(bar2)
         setContentView(root)
 
         if (profiles.isEmpty()) Toast.makeText(this, "هیچ نفری فعال نیست", Toast.LENGTH_LONG).show()
@@ -167,6 +182,42 @@ class BotActivity : Activity() {
         h.post(uiTick)
         h.post(ticker)
         h.postDelayed(summaryTick, 30000)
+    }
+
+    private val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    private lateinit var btnUa: Button
+    private lateinit var btnNet: Button
+    private var netCb: ConnectivityManager.NetworkCallback? = null
+
+    // UserAgent: موبایل (بدون wv، مثل کروم) یا دسکتاپ (مثل کامپیوتر)
+    private fun applyUa() {
+        val st = web.settings
+        if (store.desktop) { st.userAgentString = DESKTOP_UA; st.useWideViewPort = true; st.loadWithOverviewMode = true }
+        else {
+            st.userAgentString = WebSettings.getDefaultUserAgent(this).replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
+            st.useWideViewPort = true; st.loadWithOverviewMode = false
+        }
+        if (::btnUa.isInitialized) btnUa.text = if (store.desktop) "🖥 دسکتاپ: روشن" else "📱 موبایل"
+    }
+
+    // شبکه: همه ترافیک اپ را به Wi-Fi یا داده موبایل قفل می‌کند (0 = خودکار)
+    private fun applyNet() {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        netCb?.let { try { cm.unregisterNetworkCallback(it) } catch (_: Exception) {} }
+        netCb = null
+        if (::btnNet.isInitialized) btnNet.text = when (store.net) { 1 -> "📶 فقط Wi-Fi"; 2 -> "📡 فقط موبایل"; else -> "🌐 شبکه: خودکار" }
+        try {
+            if (store.net == 0) { cm.bindProcessToNetwork(null); log("شبکه: خودکار (${Logger.netInfo(this)})"); return }
+            val tr = if (store.net == 1) NetworkCapabilities.TRANSPORT_WIFI else NetworkCapabilities.TRANSPORT_CELLULAR
+            val name = if (store.net == 1) "WIFI" else "CELLULAR"
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(n: Network) { cm.bindProcessToNetwork(n); log("اپ به $name قفل شد") }
+                override fun onLost(n: Network) { log("شبکه $name قطع شد", "WARN") }
+                override fun onUnavailable() { log("شبکه $name در دسترس نیست", "WARN") }
+            }
+            netCb = cb
+            cm.requestNetwork(NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addTransportType(tr).build(), cb)
+        } catch (e: Exception) { log("تنظیم شبکه ناموفق: ${e.message}", "ERROR") }
     }
 
     private fun startLoad() {
@@ -310,5 +361,8 @@ class BotActivity : Activity() {
         dialogText("فیلدها و دکمه‌های صفحه", t)
     }
 
-    override fun onDestroy() { logSummary(); log("پایان جلسه"); h.removeCallbacksAndMessages(null); super.onDestroy() }
+    override fun onDestroy() {
+        try { val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            netCb?.let { cm.unregisterNetworkCallback(it) }; cm.bindProcessToNetwork(null) } catch (_: Exception) {}
+        logSummary(); log("پایان جلسه"); h.removeCallbacksAndMessages(null); super.onDestroy() }
 }

@@ -45,6 +45,14 @@ class Store(ctx: Context) {
     var refreshSec: Float
         get() = sp.getFloat("refresh1s", 1f)
         set(v) = sp.edit().putFloat("refresh1s", v).apply()
+    // حالت دسکتاپ: UserAgent و نمای کامپیوتر
+    var desktop: Boolean
+        get() = sp.getBoolean("desktop", false)
+        set(v) = sp.edit().putBoolean("desktop", v).apply()
+    // شبکه: 0 خودکار، 1 فقط Wi-Fi، 2 فقط داده موبایل
+    var net: Int
+        get() = sp.getInt("net", 0)
+        set(v) = sp.edit().putInt("net", v).apply()
     var startAt: String
         get() = sp.getString("startAt", "08:00:00")!!
         set(v) = sp.edit().putString("startAt", v).apply()

@@ -6,6 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.graphics.Typeface
 import android.os.Build
 import android.util.Log
@@ -49,10 +51,24 @@ object Logger {
     fun text(): String = try { file?.readText() ?: "" } catch (_: Exception) { "" }
     fun clear() { try { file?.writeText("") } catch (_: Exception) {} }
 
+    /** نوع شبکه فعال: WIFI / CELLULAR / VPN */
+    fun netInfo(ctx: Context): String = try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val n = cm.activeNetwork
+        val c = if (n != null) cm.getNetworkCapabilities(n) else null
+        if (c == null) "بدون-شبکه" else listOfNotNull(
+            if (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) "WIFI" else null,
+            if (c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) "CELLULAR" else null,
+            if (c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) "VPN" else null,
+            if (c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) "ETH" else null
+        ).joinToString("+").ifEmpty { "?" }
+    } catch (e: Exception) { "?" }
+
     fun sessionHeader(ctx: Context, s: Store) {
         val ps = s.profiles
         w("INFO", "===== جلسه جدید =====")
         w("INFO", "app=${BuildConfig.VERSION_NAME} device=${Build.MANUFACTURER} ${Build.MODEL} android=${Build.VERSION.SDK_INT}")
+        w("INFO", "network=${netInfo(ctx)} netMode=${s.net} ua=${if (s.desktop) "desktop" else "mobile"}")
         w("INFO", "config url=${s.url} refresh=${s.refreshSec}s start=${s.startAt.ifEmpty { "-" }} profiles=${ps.size} enabled=${ps.count { it.enabled }} withPhotos=${ps.count { it.front.isNotEmpty() && it.back.isNotEmpty() }}")
     }
 
