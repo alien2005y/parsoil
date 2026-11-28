@@ -113,38 +113,67 @@ class MainActivity : Activity() {
 
     private fun edit(p: Profile, idx: Int) {
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 16, 32, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
-        fun et(h: String, s: String, num: Boolean = false) = EditText(this).apply {
-            hint = h; setText(s); if (num) inputType = InputType.TYPE_CLASS_NUMBER; v.addView(this) }
-        val nid = et("کد ملی", p.nationalId, true); val mob = et("موبایل (09...)", p.mobile, true)
+        // ارقام فارسی/عربی همان لحظه تایپ به انگلیسی تبدیل می‌شود
+        fun et(h: String, s: String, max: Int = 0, num: Boolean = false) = EditText(this).apply {
+            hint = h; setText(s); if (num) inputType = InputType.TYPE_CLASS_NUMBER
+            if (max > 0) filters = arrayOf(android.text.InputFilter.LengthFilter(max))
+            addTextChangedListener(object : android.text.TextWatcher {
+                var busy = false
+                override fun beforeTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+                override fun onTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+                override fun afterTextChanged(e: android.text.Editable) {
+                    if (busy) return
+                    val t = e.toString(); val n = Options.en(t)
+                    if (n != t) { busy = true; e.replace(0, e.length, n); busy = false }
+                }
+            })
+            v.addView(this) }
+        fun label(t: String) = v.addView(Ui.text(this, t, 12f, Ui.muted).apply { setPadding(0, dp(10), 0, 0) })
+        fun spinner(items: List<Pair<String, String>>, cur: String): Spinner {
+            val names = listOf("انتخاب کنید") + items.map { it.second }
+            val sp = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, names) }
+            // ذخیره‌ی قدیمی ممکن است مقدار یا متن باشد
+            val i = items.indexOfFirst { it.first == cur || it.second == cur }
+            sp.setSelection(if (i >= 0) i + 1 else 0)
+            v.addView(sp); return sp
+        }
+        val nid = et("کد ملی (۱۰ رقم)", p.nationalId, 10, true); val mob = et("موبایل (09...)", p.mobile, 11, true)
         val fn = et("نام", p.first); val ln = et("نام خانوادگی", p.last)
         val bd = et("تاریخ تولد (فعلاً در فرم نیست، اختیاری)", p.birth)
-        val male = RadioButton(this).apply { text = "مرد"; isChecked = p.male }
-        val female = RadioButton(this).apply { text = "زن"; isChecked = !p.male }
-        v.addView(RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; addView(male); addView(female) })
-        val vin = et("VIN", p.vin); val model = et("مدل خودرو (سال شمسی، مثلا 1392)", p.model)
-        val km = et("کیلومتر فعلی", p.km, true); val ct = et("نوع خودرو (مثلا پژو 405)", p.carType)
-        val p2 = et("پلاک: دو رقم سمت چپ", p.plate2, true); val pl = et("پلاک: حرف (مثلا د یا الف)", p.plateLetter)
-        val p3 = et("پلاک: سه رقم", p.plate3, true); val pc = et("پلاک: کد ایران (دو رقم)", p.plateCity, true)
+        label("جنسیت")
+        // رادیوباتن‌ها باید id داشته باشند وگرنه گروه فقط اولی را می‌پذیرد
+        val male = RadioButton(this).apply { id = View.generateViewId(); text = "مرد" }
+        val female = RadioButton(this).apply { id = View.generateViewId(); text = "زن" }
+        val grp = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; addView(male); addView(female) }
+        grp.check(if (p.male) male.id else female.id)
+        v.addView(grp)
+        val vin = et("VIN (۱۷ کاراکتر)", p.vin, 17)
+        vin.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        label("مدل خودرو (سال ساخت)"); val model = spinner(Options.models, p.model)
+        val km = et("کیلومتر فعلی (اختیاری)", p.km, 7, true)
+        label("نوع خودرو"); val ct = spinner(Options.carTypes, p.carType)
+        label("شماره پلاک (به ترتیب چپ به راست روی سایت)")
+        val p2 = et("دو رقم اول پلاک", p.plate2, 2, true)
+        label("حرف پلاک"); val pl = spinner(Options.letters, p.plateLetter)
+        val p3 = et("سه رقم پلاک", p.plate3, 3, true); val pc = et("کد ایران (دو رقم سمت راست)", p.plateCity, 2, true)
         var front = p.front; var back = p.back
         val fb = Button(this).apply { text = "عکس روی کارت ماشین ${if (front.isNotEmpty()) "✓" else ""}" }
         val bb = Button(this).apply { text = "عکس پشت کارت ماشین ${if (back.isNotEmpty()) "✓" else ""}" }
         fb.setOnClickListener { pick { front = it; fb.text = "عکس روی کارت ✓" } }
         bb.setOnClickListener { pick { back = it; bb.text = "عکس پشت کارت ✓" } }
         v.addView(fb); v.addView(bb)
+        fun t(e: EditText) = Options.en(e.text.toString().trim())
+        fun sel(s: Spinner, items: List<Pair<String, String>>) = if (s.selectedItemPosition > 0) items[s.selectedItemPosition - 1].first else ""
         AlertDialog.Builder(this).setTitle("مشخصات").setView(ScrollView(this).apply { addView(v) })
             .setPositiveButton("ذخیره") { _, _ ->
-                val np = Profile(fa(nid), fa(mob), fn.text.toString().trim(), ln.text.toString().trim(),
-                    fa(bd), male.isChecked, vin.text.toString().trim(), model.text.toString().trim(), fa(km),
-                    ct.text.toString().trim(), fa(p2), pl.text.toString().trim(), fa(p3), fa(pc), front, back, p.enabled)
+                val np = Profile(t(nid), t(mob), fn.text.toString().trim(), ln.text.toString().trim(),
+                    t(bd), male.isChecked, t(vin).uppercase(), sel(model, Options.models), t(km),
+                    sel(ct, Options.carTypes), t(p2), sel(pl, Options.letters), t(p3), t(pc), front, back, p.enabled)
                 val l = store.profiles
                 if (idx >= 0) l[idx] = np else l.add(np)
                 store.profiles = l; render()
-            }.show()
+            }.setNegativeButton("لغو", null).show()
     }
-
-    // ارقام فارسی/عربی -> انگلیسی (سایت انگلیسی می‌خواهد)
-    private fun fa(e: EditText) = e.text.toString().trim().map {
-        when (it) { in '۰'..'۹' -> '0' + (it - '۰'); in '٠'..'٩' -> '0' + (it - '٠'); else -> it } }.joinToString("")
 
     private fun pick(cb: (String) -> Unit) {
         pickCb = cb

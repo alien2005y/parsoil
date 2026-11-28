@@ -265,7 +265,10 @@ class BotActivity : Activity() {
     private fun fill(focusCap: Boolean) {
         val p = profiles.getOrNull(cur) ?: run { state(Ui.bad, "نفری برای پر کردن نیست"); return }
         fun b64(path: String) = if (path.isEmpty() || !File(path).exists()) "" else "data:image/jpeg;base64," + Base64.encodeToString(File(path).readBytes(), Base64.NO_WRAP)
-        val data = JSONObject(p.toJson().toString()).put("frontData", b64(p.front)).put("backData", b64(p.back)).put("focusCap", focusCap)
+        val pj = p.toJson()
+        for (k in listOf("nationalId", "mobile", "km", "plate2", "plate3", "plateCity", "vin", "model", "birth"))
+            pj.put(k, Options.en(pj.optString(k)))
+        val data = JSONObject(pj.toString()).put("frontData", b64(p.front)).put("backData", b64(p.back)).put("focusCap", focusCap)
         fills++
         web.evaluateJavascript("(" + Js.FILL + ")(" + data + ")") { r ->
             try {
