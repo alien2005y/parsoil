@@ -108,6 +108,9 @@ object Js {
         if(cap){cap.scrollIntoView({block:'center'});cap.focus();rep.captcha='focused'}else{rep.captcha='missing'}}
       return JSON.stringify(rep)}"""
 
+    // سلامت صفحه: طول متن + عنوان (برای تشخیص صفحه سفید/خطا)
+    const val PAGE_HEALTH = "(function(){return ((document.body&&document.body.innerText)||'').trim().length+'|'+document.title})()"
+
     // لیست idها و برچسب‌ها برای عیب‌یابی
     const val INSPECT = """(function(){var o=[];
       document.querySelectorAll('input,select,textarea').forEach(function(e){

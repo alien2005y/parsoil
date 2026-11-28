@@ -53,6 +53,10 @@ class Store(ctx: Context) {
     var net: Int
         get() = sp.getInt("net", 0)
         set(v) = sp.edit().putInt("net", v).apply()
+    // حالت هوشمند: بعد از ۲ خطا/صفحه سفید پشت‌سرهم، خودکار UA و شبکه را عوض می‌کند
+    var smart: Boolean
+        get() = sp.getBoolean("smart", true)
+        set(v) = sp.edit().putBoolean("smart", v).apply()
     var startAt: String
         get() = sp.getString("startAt", "08:00:00")!!
         set(v) = sp.edit().putString("startAt", v).apply()

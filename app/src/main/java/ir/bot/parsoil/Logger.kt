@@ -68,7 +68,7 @@ object Logger {
         val ps = s.profiles
         w("INFO", "===== جلسه جدید =====")
         w("INFO", "app=${BuildConfig.VERSION_NAME} device=${Build.MANUFACTURER} ${Build.MODEL} android=${Build.VERSION.SDK_INT}")
-        w("INFO", "network=${netInfo(ctx)} netMode=${s.net} ua=${if (s.desktop) "desktop" else "mobile"}")
+        w("INFO", "network=${netInfo(ctx)} netMode=${s.net} smart=${s.smart} ua=${if (s.desktop) "desktop" else "mobile"}")
         w("INFO", "config url=${s.url} refresh=${s.refreshSec}s start=${s.startAt.ifEmpty { "-" }} profiles=${ps.size} enabled=${ps.count { it.enabled }} withPhotos=${ps.count { it.front.isNotEmpty() && it.back.isNotEmpty() }}")
     }
 

@@ -109,13 +109,14 @@ class MainActivity : Activity() {
         val netSp = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("شبکه: خودکار", "فقط Wi-Fi", "فقط داده موبایل"))
             setSelection(store.net) }
-        v.addView(desk); v.addView(netSp)
+        val smart = CheckBox(this).apply { text = "حالت هوشمند: بعد از ۲ خطا یا صفحه سفید، خودکار حالت (موبایل/دسکتاپ، Wi-Fi/موبایل) را عوض کن"; isChecked = store.smart }
+        v.addView(desk); v.addView(netSp); v.addView(smart)
         AlertDialog.Builder(this).setTitle("تنظیمات").setView(v).setPositiveButton("ذخیره") { _, _ ->
             store.url = url.text.toString().trim()
             store.refreshSec = (sec.text.toString().toFloatOrNull() ?: 3f).coerceAtLeast(0.5f)
             store.repo = repo.text.toString().trim()
             store.startAt = st.text.toString().trim()
-            store.desktop = desk.isChecked; store.net = netSp.selectedItemPosition
+            store.desktop = desk.isChecked; store.net = netSp.selectedItemPosition; store.smart = smart.isChecked
         }.show()
     }
 

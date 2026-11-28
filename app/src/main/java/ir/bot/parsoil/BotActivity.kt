@@ -52,6 +52,13 @@ class BotActivity : Activity() {
     // آمار برای پایش
     private var loadStart = 0L; private var loads = 0; private var loadMsSum = 0L
     private var errors = 0; private var timeouts = 0; private var clicks = 0; private var fills = 0
+    private var desktopNow = false
+    private var netNow = 0
+    private var failStreak = 0
+    private var loadFailed = false
+    private var comboIdx = 0
+    private var lastSwitch = 0L
+    private var combos = listOf<Pair<Boolean, Int>>()
     private var lastPath = ""
     private var navPendingUntil = 0L
     private var clickInFlight = false
@@ -75,6 +82,7 @@ class BotActivity : Activity() {
         store = Store(this)
         Logger.init(this); Logger.sessionHeader(this, store)
         profiles = store.profiles.filter { it.enabled }
+        desktopNow = store.desktop; netNow = store.net
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL; setBackgroundColor(Ui.bg) }
 
@@ -107,7 +115,7 @@ class BotActivity : Activity() {
                     if (Uri.parse(e.url).host?.endsWith("parsoilco.ir") == true) { log("SSL نامعتبر ${e.primaryError} (ادامه)", "WARN"); hd.proceed() } else hd.cancel()
                 }
                 override fun onPageStarted(v: WebView, u: String, f: android.graphics.Bitmap?) {
-                    loadStart = System.currentTimeMillis()
+                    loadStart = System.currentTimeMillis(); loadFailed = false
                     val path = Uri.parse(u).path ?: ""
                     if (path != lastPath) {
                         val q = Uri.parse(u).queryParameterNames
@@ -121,12 +129,19 @@ class BotActivity : Activity() {
                     loads++; loadMsSum += dur
                     log("لود شد ${dur}ms مسیر=${Uri.parse(u).path} عنوان='${v.title?.take(30) ?: ""}'", if (dur > 3000) "WARN" else "INFO")
                     if (!opened) probe()
+                    if (!loadFailed && !opened) v.evaluateJavascript(Js.PAGE_HEALTH) { r ->
+                        val parts = (r?.trim('"') ?: "").split("|", limit = 2)
+                        val len = parts[0].toIntOrNull() ?: 0; val title = parts.getOrElse(1) { "" }
+                        val bad = len < 30 || Regex("not available|ERR_|error|خطا|Bad Gateway|Unavailable", RegexOption.IGNORE_CASE).containsMatchIn(title)
+                        if (bad) noteFail("صفحه سفید/خطا (متن=$len عنوان='${title.take(25)}')") else onGood()
+                    }
                 }
                 override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
                     if (r.isForMainFrame) {
                         errors++
                         state(Ui.bad, "خطای لود ${e.errorCode}: ${e.description}")
-                        log("شبکه فعال هنگام خطا: ${Logger.netInfo(this@BotActivity)} ua=${if (store.desktop) "desktop" else "mobile"}", "WARN")
+                        noteFail("خطای لود ${e.errorCode}")
+                        log("شبکه فعال هنگام خطا: ${Logger.netInfo(this@BotActivity)} ua=${if (desktopNow) "desktop" else "mobile"}", "WARN")
                         lastReload = System.currentTimeMillis() - (store.refreshSec * 1000).toLong() + 500
                     }
                 }
@@ -134,6 +149,7 @@ class BotActivity : Activity() {
                     if (r.isForMainFrame) {
                         errors++
                         state(Ui.bad, "پاسخ سرور ${e.statusCode} مسیر=${r.url.path}")
+                        noteFail("HTTP ${e.statusCode}")
                         lastReload = System.currentTimeMillis() - (store.refreshSec * 1000).toLong() + 500
                     }
                 }
@@ -164,16 +180,16 @@ class BotActivity : Activity() {
         val bar2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(Color.WHITE)
             setPadding(Ui.dp(this@BotActivity, 6), 0, Ui.dp(this@BotActivity, 6), Ui.dp(this@BotActivity, 6)) }
         btnUa = Ui.button(this, "", Ui.navy, 12f) {
-            store.desktop = !store.desktop; applyUa()
-            log("حالت: ${if (store.desktop) "دسکتاپ" else "موبایل"} — بارگذاری مجدد"); startLoad()
+            desktopNow = !desktopNow; store.desktop = desktopNow; applyUa()
+            log("حالت: ${if (desktopNow) "دسکتاپ" else "موبایل"} — بارگذاری مجدد"); startLoad()
         }
         btnNet = Ui.button(this, "", Ui.navy, 12f) {
-            store.net = (store.net + 1) % 3; applyNet()
+            netNow = (netNow + 1) % 3; store.net = netNow; applyNet()
             h.postDelayed({ log("بارگذاری مجدد با شبکه ${Logger.netInfo(this)}"); startLoad() }, 1500)
         }
         bar2.addView(Ui.weight(btnUa)); bar2.addView(Ui.weight(btnNet))
         bar2.addView(Ui.weight(Ui.button(this, "🔍 تشخیص", Ui.gold, 12f) { Diag.run(this) }))
-        applyUa(); applyNet()
+        buildCombos(); applyUa(); applyNet()
         root.addView(panel); root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); root.addView(bar); root.addView(bar2)
         setContentView(root)
 
@@ -193,12 +209,12 @@ class BotActivity : Activity() {
     // UserAgent: موبایل (بدون wv، مثل کروم) یا دسکتاپ (مثل کامپیوتر)
     private fun applyUa() {
         val st = web.settings
-        if (store.desktop) { st.userAgentString = DESKTOP_UA; st.useWideViewPort = true; st.loadWithOverviewMode = true }
+        if (desktopNow) { st.userAgentString = DESKTOP_UA; st.useWideViewPort = true; st.loadWithOverviewMode = true }
         else {
             st.userAgentString = WebSettings.getDefaultUserAgent(this).replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
             st.useWideViewPort = true; st.loadWithOverviewMode = false
         }
-        if (::btnUa.isInitialized) btnUa.text = if (store.desktop) "🖥 دسکتاپ: روشن" else "📱 موبایل"
+        if (::btnUa.isInitialized) btnUa.text = if (desktopNow) "🖥 دسکتاپ: روشن" else "📱 موبایل"
     }
 
     // شبکه: همه ترافیک اپ را به Wi-Fi یا داده موبایل قفل می‌کند (0 = خودکار)
@@ -206,11 +222,11 @@ class BotActivity : Activity() {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         netCb?.let { try { cm.unregisterNetworkCallback(it) } catch (_: Exception) {} }
         netCb = null
-        if (::btnNet.isInitialized) btnNet.text = when (store.net) { 1 -> "📶 فقط Wi-Fi"; 2 -> "📡 فقط موبایل"; else -> "🌐 شبکه: خودکار" }
+        if (::btnNet.isInitialized) btnNet.text = when (netNow) { 1 -> "📶 فقط Wi-Fi"; 2 -> "📡 فقط موبایل"; else -> "🌐 شبکه: خودکار" }
         try {
-            if (store.net == 0) { cm.bindProcessToNetwork(null); log("شبکه: خودکار (${Logger.netInfo(this)})"); return }
-            val tr = if (store.net == 1) NetworkCapabilities.TRANSPORT_WIFI else NetworkCapabilities.TRANSPORT_CELLULAR
-            val name = if (store.net == 1) "WIFI" else "CELLULAR"
+            if (netNow == 0) { cm.bindProcessToNetwork(null); log("شبکه: خودکار (${Logger.netInfo(this)})"); return }
+            val tr = if (netNow == 1) NetworkCapabilities.TRANSPORT_WIFI else NetworkCapabilities.TRANSPORT_CELLULAR
+            val name = if (netNow == 1) "WIFI" else "CELLULAR"
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(n: Network) { cm.bindProcessToNetwork(n); log("اپ به $name قفل شد") }
                 override fun onLost(n: Network) { log("شبکه $name قطع شد", "WARN") }
@@ -219,6 +235,55 @@ class BotActivity : Activity() {
             netCb = cb
             cm.requestNetwork(NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addTransportType(tr).build(), cb)
         } catch (e: Exception) { log("تنظیم شبکه ناموفق: ${e.message}", "ERROR") }
+    }
+
+    // ترکیب‌های قابل امتحان: اول UA عوض می‌شود، بعد شبکه (فقط شبکه‌هایی که الان وجود دارند)
+    private fun buildCombos() {
+        try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            var wifi = false; var cell = false
+            @Suppress("DEPRECATION")
+            for (n in cm.allNetworks) { val c = cm.getNetworkCapabilities(n) ?: continue
+                if (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) wifi = true
+                if (c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) cell = true }
+            val nets = mutableListOf(0); if (wifi) nets.add(1); if (cell) nets.add(2)
+            combos = nets.flatMap { n -> listOf(false, true).map { d -> d to n } }
+            comboIdx = combos.indexOf(desktopNow to netNow).coerceAtLeast(0)
+            log("حالت‌های قابل امتحان: ${combos.size} (wifi=$wifi cell=$cell هوشمند=${store.smart})")
+        } catch (e: Exception) { log("ساخت لیست حالت‌ها ناموفق: ${e.message}", "ERROR") }
+    }
+
+    private fun modeName() = "${if (desktopNow) "دسکتاپ" else "موبایل"} + ${when (netNow) { 1 -> "Wi-Fi"; 2 -> "موبایل"; else -> "خودکار" }}"
+
+    // خطا/صفحه سفید را می‌شمارد؛ بعد از ۲ بار پشت‌سرهم حالت را عوض می‌کند. true = حالت عوض شد
+    private fun noteFail(reason: String): Boolean {
+        if (loadFailed || opened) return false
+        loadFailed = true; failStreak++
+        log("ناموفق ($failStreak/2) در حالت ${modeName()}: $reason", "WARN")
+        if (store.smart && failStreak >= 2 && combos.size > 1 && System.currentTimeMillis() - lastSwitch > 3000) { switchMode(reason); return true }
+        return false
+    }
+
+    private fun switchMode(why: String) {
+        failStreak = 0; lastSwitch = System.currentTimeMillis()
+        comboIdx = (comboIdx + 1) % combos.size
+        val (d, n) = combos[comboIdx]
+        val netChanged = n != netNow
+        desktopNow = d; netNow = n
+        state(Ui.warn, "تغییر حالت ← ${modeName()}")
+        log("حالت عوض شد به ${modeName()} (دلیل: $why)", "WARN")
+        applyUa()
+        if (netChanged) { applyNet(); h.postDelayed({ startLoad() }, 1200) } else startLoad()
+    }
+
+    // صفحه سالم لود شد: حالت کارا را برای دفعه بعد ذخیره کن
+    private fun onGood() {
+        if (failStreak > 0) log("بعد از خطا موفق شد در حالت ${modeName()}")
+        failStreak = 0
+        if (desktopNow != store.desktop || netNow != store.net) {
+            store.desktop = desktopNow; store.net = netNow
+            log("حالت کارا ذخیره شد: ${modeName()}")
+        }
     }
 
     private fun startLoad() {
@@ -285,7 +350,8 @@ class BotActivity : Activity() {
             val loading = web.progress < 100
             val limit = if (loading) 6000L else (store.refreshSec * 1000).toLong()
             if (now >= navPendingUntil && now - lastReload > limit) {
-                if (loading) { web.stopLoading(); timeouts++; log("تایم‌اوت لود (۶ ثانیه) مسیر=${Uri.parse(web.url ?: "").path}", "WARN") }
+                if (loading) { web.stopLoading(); timeouts++; log("تایم‌اوت لود (۶ ثانیه) مسیر=${Uri.parse(web.url ?: "").path}", "WARN")
+                    if (noteFail("تایم‌اوت")) { lastReload = now; h.postDelayed(this, 150); return } }
                 lastReload = now; attempts++
                 web.reload()
             }
