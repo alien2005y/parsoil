@@ -15,8 +15,8 @@ object Js {
           if(c)return c;}
         return null};
     """
-    // فرم باز است اگر فیلد «کد ملی» قابل مشاهده باشد
-    const val IS_OPEN = "(function(){$HELPERS var e=byLabel('کد ملی');return !!(e&&vis(e));})()"
+    // فرم باز است اگر فیلد NationalId داخل attForm دیده شود
+    const val IS_OPEN = "(function(){var e=document.getElementById('NationalId');return !!(e&&e.offsetParent!==null&&document.getElementById('attForm'));})()"
 
     // دکمه/کارت فعالِ نوبت را پیدا و کلیک می‌کند؛ متن را برمی‌گرداند ('' = چیزی نبود)
     // الف) متن دکمه کلیدواژه دارد  ب) خودِ کارت تاریخ‌دار فعال شده  ج) دکمه فعال داخل یک کارت تاریخ‌دار
@@ -47,63 +47,65 @@ object Js {
         o.push(t+'|'+((e.disabled||/disabled/i.test(e.className))?'غیرفعال':'فعال'))});
       return 'title='+document.title+' ; '+o.slice(0,12).join(' ; ')+' ; متن صفحه='+((document.body&&document.body.innerText)||'').replace(/\s+/g,' ').trim().slice(0,160)})()"""
 
-    // data = پروفایل؛ خروجی = JSON وضعیت هر فیلد (ok / missing / no-option / rejected ...)
+    // data = پروفایل؛ خروجی = JSON وضعیت هر فیلد. idها از HTML واقعی صفحه ثبت‌نام گرفته شده.
+    // فیلد honeypot به اسم Website عمداً دست نمی‌خورد (باید خالی بماند).
     const val FILL = """function(d){
-      $HELPERS
       var rep={};
+      var g=function(id){return document.getElementById(id)};
       var ev=function(e,n){e.dispatchEvent(new Event(n,{bubbles:true}))};
-      var setV=function(e,v,name){
-        if(!e){rep[name]='missing';return}
-        if(v==null||v===''){rep[name]='empty-profile';return}
-        var proto=e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;
-        var s=Object.getOwnPropertyDescriptor(proto,'value').set;
-        if(e.tagName==='SELECT'){var ok=false;
-          for(var i=0;i<e.options.length;i++){if(e.options[i].text.indexOf(v)>=0){s.call(e,e.options[i].value);ok=true;break}}
-          if(!ok){rep[name]='no-option';return}
-          if(window.jQuery){try{jQuery(e).val(e.value).trigger('change')}catch(x){}}}
-        else s.call(e,v);
+      var nz=function(s){return (s||'').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\s\u200c]+/g,' ').trim()};
+      var setText=function(id,v,key){
+        var e=g(id);
+        if(!e){rep[key]='missing';return}
+        if(v==null||v===''){rep[key]='empty-profile';return}
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);
         ev(e,'input');ev(e,'change');ev(e,'keyup');ev(e,'blur');
-        rep[name]=(e.value&&e.value.length)?'ok':'rejected'};
-      setV(byLabel('کد ملی'),d.nationalId,'nationalId');
-      var mob=document.querySelector('input[placeholder*="9XXXXXXXXX"],input[placeholder*="09"]')||byLabel('موبایل');
-      setV(mob,d.mobile,'mobile');
-      setV(byLabel('نام'),d.first,'first');
-      setV(byLabel('نام خانوادگی'),d.last,'last');
-      setV(byLabel('تاریخ تولد'),d.birth,'birth');
-      var rs=document.querySelectorAll('input[type=radio]');rep.gender='missing';
-      for(var i=0;i<rs.length;i++){var lab=norm((rs[i].parentElement||{}).textContent);
-        if(lab.indexOf(d.male?'مرد':'زن')>=0&&(d.male||lab.indexOf('مرد')<0)){rs[i].click();rep.gender=rs[i].checked?'ok':'rejected';break}}
-      setV(byLabel('VIN'),d.vin,'vin');
-      setV(byLabel('مدل خودرو'),d.model,'model');
-      setV(byLabel('کیلومتر فعلی'),d.km,'km');
-      setV(byLabel('نوع خودرو'),d.carType,'carType');
-      // پلاک: بر اساس موقعیت روی صفحه، نه ترتیب DOM
-      var lbl=byLabel('شماره پلاک');var box=lbl;
-      for(var k=0;k<5&&box;k++){box=box.parentElement;
-        if(box&&box.querySelectorAll('input:not([type=hidden]),select').length>=4)break}
-      if(!box){rep.plate='box-missing'}else{
-        var cs=[].slice.call(box.querySelectorAll('input:not([type=hidden]),select')).filter(vis);
-        var sel=cs.filter(function(c){return c.tagName==='SELECT'})[0];
-        var ins=cs.filter(function(c){return c.tagName!=='SELECT'});
-        ins.sort(function(a,b){return a.getBoundingClientRect().left-b.getBoundingClientRect().left});
-        rep.plateInputs=ins.length+(sel?'+select':'');
-        if(ins.length>=3){setV(ins[0],d.plate2,'plate2');setV(ins[1],d.plate3,'plate3');setV(ins[2],d.plateCity,'plateCity')}
-        else rep.plate='inputs-found-'+ins.length;
-        setV(sel,d.plateLetter,'plateLetter');
-      }
-      // عکس‌ها: اولین input فایل = روی کارت، دومی = پشت کارت
-      var fs=document.querySelectorAll('input[type=file]');rep.fileInputs=fs.length;
-      var put=function(inp,data,name,key){
+        rep[key]=(e.value===v)?'ok':'rejected'};
+      var setSel=function(id,v,key){
+        var e=g(id);
+        if(!e){rep[key]='missing';return}
+        if(v==null||v===''){rep[key]='empty-profile';return}
+        var want=nz(v),hit=null,i,o;
+        for(i=0;i<e.options.length;i++){o=e.options[i];if(o.value===v||nz(o.text)===want){hit=o;break}}
+        if(!hit){for(i=0;i<e.options.length;i++){o=e.options[i];if(o.value&&nz(o.text).indexOf(want)>=0){hit=o;break}}}
+        if(!hit){rep[key]='no-option';return}
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,hit.value);
+        if(window.jQuery){try{jQuery(e).val(hit.value).trigger('change')}catch(x){}}else{ev(e,'change')}
+        rep[key]=(e.value===hit.value)?'ok':'rejected'};
+      setText('NationalId',d.nationalId,'nationalId');
+      setText('Mobile',d.mobile,'mobile');
+      setText('F_Name',d.first,'first');
+      setText('L_Name',d.last,'last');
+      var gr=g(d.male?'Gender_0':'Gender_1');
+      if(gr){gr.click();rep.gender=gr.checked?'ok':'rejected'}else{rep.gender='missing'}
+      setText('VIN',d.vin,'vin');
+      setSel('CarModel',d.model,'model');
+      setText('Kilometer',d.km,'km');
+      setSel('Type_Car',d.carType,'carType');
+      setText('twoDigit',d.plate2,'plate2');
+      setSel('letter',d.plateLetter,'plateLetter');
+      setText('threeDigit',d.plate3,'plate3');
+      setText('irDigit',d.plateCity,'plateCity');
+      // تاریخ تولد: در نسخه فعلی فرم وجود ندارد؛ اگر برگشت پر می‌شود
+      var bd=g('BirthDateString');
+      if(bd){setText('BirthDateString',d.birth,'birth')}else{rep.birth='not-on-page'}
+      // عکس‌ها: سایت خودش روی رویداد change فشرده‌سازی و اعتبارسنجی می‌کند
+      var put=function(id,data,name,key){
+        var inp=g(id);
         if(!data){rep[key]='no-image-in-profile';return}
         if(!inp){rep[key]='no-file-input';return}
+        if(inp.files&&inp.files.length&&inp._botDone){rep[key]='ok';return}
         try{var a=data.split(',')[1],bin=atob(a),u=new Uint8Array(bin.length);
           for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
-          var f=new File([u],name,{type:'image/jpeg'}),dt=new DataTransfer();dt.items.add(f);
-          inp.files=dt.files;ev(inp,'change');rep[key]=inp.files.length?'ok':'rejected'}
+          var dt=new DataTransfer();
+          dt.items.add(new File([u],name,{type:'image/jpeg',lastModified:Date.now()}));
+          inp.files=dt.files;inp._botDone=true;ev(inp,'change');
+          rep[key]=(inp.files&&inp.files.length)?'ok':'rejected'}
         catch(x){rep[key]='error:'+x.message}};
-      put(fs[0],d.frontData,'front.jpg','imgFront');put(fs[1],d.backData,'back.jpg','imgBack');
-      if(d.focusCap){var cap=byLabel('کد امنیتی');
-        if(cap){cap.scrollIntoView({block:'center'});cap.focus();rep.captcha='focused'}else rep.captcha='missing'}
+      put('carCardFront',d.frontData,'front.jpg','imgFront');
+      put('carCardBack',d.backData,'back.jpg','imgBack');
+      if(d.focusCap){var cap=g('Captcha');
+        if(cap){cap.scrollIntoView({block:'center'});cap.focus();rep.captcha='focused'}else{rep.captcha='missing'}}
       return JSON.stringify(rep)}"""
 
     // لیست idها و برچسب‌ها برای عیب‌یابی

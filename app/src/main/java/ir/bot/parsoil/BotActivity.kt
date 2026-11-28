@@ -270,7 +270,7 @@ class BotActivity : Activity() {
         web.evaluateJavascript("(" + Js.FILL + ")(" + data + ")") { r ->
             try {
                 val rep = JSONObject(JSONObject("{\"v\":$r}").getString("v"))
-                val bad = rep.keys().asSequence().filter { k -> val v = rep.getString(k); v != "ok" && v != "focused" && v != "empty-profile" && !k.startsWith("plateInputs") && k != "fileInputs" }
+                val bad = rep.keys().asSequence().filter { k -> val v = rep.getString(k); v != "ok" && v != "focused" && v != "empty-profile" && v != "not-on-page" }
                     .map { k -> "$k=${rep.getString(k)}" }.toList()
                 log("پرکردن(${if (focusCap) "۲" else "۱"}): ${if (bad.isEmpty()) "همه فیلدها ok" else "مشکل در " + bad.joinToString(", ")} | $rep",
                     if (bad.isEmpty()) "INFO" else "WARN")

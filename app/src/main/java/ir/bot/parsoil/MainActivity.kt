@@ -117,13 +117,13 @@ class MainActivity : Activity() {
             hint = h; setText(s); if (num) inputType = InputType.TYPE_CLASS_NUMBER; v.addView(this) }
         val nid = et("کد ملی", p.nationalId, true); val mob = et("موبایل (09...)", p.mobile, true)
         val fn = et("نام", p.first); val ln = et("نام خانوادگی", p.last)
-        val bd = et("تاریخ تولد (مثلا 1370/05/20)", p.birth)
+        val bd = et("تاریخ تولد (فعلاً در فرم نیست، اختیاری)", p.birth)
         val male = RadioButton(this).apply { text = "مرد"; isChecked = p.male }
         val female = RadioButton(this).apply { text = "زن"; isChecked = !p.male }
         v.addView(RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; addView(male); addView(female) })
-        val vin = et("VIN", p.vin); val model = et("مدل خودرو (متن گزینه)", p.model)
-        val km = et("کیلومتر فعلی", p.km, true); val ct = et("نوع خودرو (متن گزینه)", p.carType)
-        val p2 = et("پلاک: دو رقم سمت چپ", p.plate2, true); val pl = et("پلاک: حرف (متن گزینه)", p.plateLetter)
+        val vin = et("VIN", p.vin); val model = et("مدل خودرو (سال شمسی، مثلا 1392)", p.model)
+        val km = et("کیلومتر فعلی", p.km, true); val ct = et("نوع خودرو (مثلا پژو 405)", p.carType)
+        val p2 = et("پلاک: دو رقم سمت چپ", p.plate2, true); val pl = et("پلاک: حرف (مثلا د یا الف)", p.plateLetter)
         val p3 = et("پلاک: سه رقم", p.plate3, true); val pc = et("پلاک: کد ایران (دو رقم)", p.plateCity, true)
         var front = p.front; var back = p.back
         val fb = Button(this).apply { text = "عکس روی کارت ماشین ${if (front.isNotEmpty()) "✓" else ""}" }
